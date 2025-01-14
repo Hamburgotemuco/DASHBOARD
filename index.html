@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard con Google Sheets - TOTALES POR BODEGA</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+        }
+        .dashboard {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .chart-container {
+            width: 60%; /* Mantiene el contenedor del mismo tamaño */
+            margin: 20px 0;
+            background: white;
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .chart-container canvas {
+            width: 100%; /* Gráfico 1 sigue ocupando todo el ancho */
+            height: 400px; /* Gráfico 1 conserva su tamaño */
+        }
+        #chartPlaceholder2-container {
+            width: 60%; /* Contenedor del gráfico 2 sigue igual */
+        }
+        #chartPlaceholder2 {
+            width: 700px; /* Ancho fijo del gráfico 2 */
+            height: 600px; /* Altura fija del gráfico 2 */
+            display: block;
+            margin: 0 auto; /* Centrado dentro del contenedor */
+        }
+        .total-general {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        table {
+            margin: 20px auto;
+            border-collapse: collapse;
+            width: 60%;
+            text-align: center;
+            font-size: 16px;
+            background-color: white;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        #chartPlaceholder3-container {
+    width: 60%; /* Igual que el gráfico 2 */
+    margin: 0 auto;
+}
+
+#chartPlaceholder3 {
+    width: 700px; /* Igual que el gráfico 2 */
+    height: 600px; /* Igual que el gráfico 2 */
+    display: block;
+    margin: 0 auto; /* Centrado */
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Gráfico 1: Totales por Bodega -->
+        <div class="chart-container">
+            <h2 style="text-align: center; font-weight: bold; color: black;">TOTALES POR BODEGA</h2>
+            <div id="totalGeneral" class="total-general"></div>
+            <canvas id="totalesPorBodega"></canvas>
+        </div>
+
+        <!-- Gráfico 2: Participación por Familia -->
+        <div id="chartPlaceholder2-container" class="chart-container">
+            <h2 style="text-align: center; font-weight: bold; color: black;">PARTICIPACIÓN POR FAMILIA</h2>
+            <div id="subtituloTotalBodegas" class="total-general"></div>
+            <div style="text-align: center; margin-bottom: 10px;">
+                <button onclick="filterByBodega('BODEGA 1')">BODEGA 1</button>
+                <button onclick="filterByBodega('BODEGA 2')">BODEGA 2</button>
+                <button onclick="resetFilter()">RESET</button>
+            </div>
+            <canvas id="chartPlaceholder2"></canvas>
+            <table id="familiaTable">
+                <thead>
+                    <tr>
+                        <th>Familia</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Gráfico 3: Productos por Vencimiento -->
+<!-- Gráfico 3: Productos por Vencimiento -->
+<div id="chartPlaceholder3-container" class="chart-container">
+    <h2 style="text-align: center; font-weight: bold; color: black;">PRODUCTOS POR VENCIMIENTO</h2>
+    <div style="text-align: center; margin-bottom: 10px;">
+        <button onclick="filterVencimientosByBodega('BODEGA 1')">BODEGA 1</button>
+        <button onclick="filterVencimientosByBodega('BODEGA 2')">BODEGA 2</button>
+        <button onclick="resetVencimientosFilter()">RESET</button>
+    </div>
+    <canvas id="chartPlaceholder3"></canvas>
+    <table id="vencimientosTable">
+        <thead>
+            <tr>
+                <th>Tiempo de Vencimiento</th>
+                <th>Total</th>
+                <th>% de Participación</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+</body>
+
+    </div>
+
+    <script>
+        const sheetId = "14vKByKKwolk5nZI-vMiZrbQ2aJJtpmr8WmJ_66wO5Uo";
+        const apiKey = "AIzaSyDbA-dK7hWr47qmihqEH87K7IR22jRYgkY"; // Reemplaza con tu clave de API
+        const sheetName = "RESUMEN";
+
+        async function fetchSheetData() {
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${sheetName}!A1:P?key=${apiKey}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.values) {
+                    processSheetData(data.values);
+                } else {
+                    console.error("No se encontraron datos en la hoja.");
+                }
+            } catch (error) {
+                console.error("Error al obtener los datos de Google Sheets:", error);
+            }
+        }
+
+        function processSheetData(data) {
+    const headers = data[0];
+    const rows = data.slice(1).filter(row => row[0] && row[11]); // Filtrar filas válidas
+
+    originalDataRows = rows; // Guardar una copia de los datos originales
+
+    // Mapear y procesar los datos
+    const bodegas = {};
+    totalGlobalOriginal = 0;
+
+    rows.forEach(row => {
+        const bodega = row[0]; // Columna de Bodega
+        const total = parseFloat(row[11]) || 0; // Columna de Total
+        totalGlobalOriginal += total;
+
+        if (!bodegas[bodega]) bodegas[bodega] = 0;
+        bodegas[bodega] += total;
+    });
+
+    // Mostrar el total general
+    displayTotalGeneral(totalGlobalOriginal);
+
+    // Crear el gráfico de Totales por Bodega
+    createChartTotalesPorBodega(bodegas, totalGlobalOriginal);
+
+    // Crear el gráfico circular de Participación por Familia
+    createPieChartFamilia(rows);
+
+    // Crear el gráfico circular de Vencimientos
+    createPieChartVencimiento(rows);
+}
+
+
+
+// Nueva función: Filtrar por bodega y actualizar el gráfico
+function filterByBodega(bodegaFilter) {
+    const filteredRows = originalDataRows.filter(row => row[0] === bodegaFilter); // Filtrar por bodega
+    const totalFiltered = filteredRows.reduce((acc, row) => acc + parseFloat(row[11] || 0), 0);
+
+    // Cambiar el texto del total según el filtro y mostrar el gráfico
+    displayTotalGeneral(totalFiltered, bodegaFilter);
+
+    // Actualizar el gráfico
+    createPieChartFamilia(filteredRows);
+}
+
+function resetFilter() {
+    // Restablecer los datos originales
+    displayTotalGeneral(totalGlobalOriginal); // Mostrar el total general
+    createPieChartFamilia(originalDataRows); // Mostrar datos completos
+}
+
+
+function displayTotalGeneral(total, bodega = null) {
+    const totalGeneralDiv = document.getElementById('totalGeneral');
+    const subtituloDiv = document.getElementById('subtituloTotalBodegas');
+
+    if (bodega) {
+        // Mostrar el total filtrado por bodega con su suma correspondiente
+        totalGeneralDiv.textContent = `TOTAL ${bodega}: ${total.toLocaleString()}`;
+        subtituloDiv.textContent = `TOTAL ${bodega}: ${total.toLocaleString()}`;
+    } else {
+        // Mostrar el total general
+        totalGeneralDiv.textContent = `TOTAL GENERAL: ${total.toLocaleString()}`;
+        subtituloDiv.textContent = `TOTAL BODEGAS: ${total.toLocaleString()}`;
+    }
+}
+
+
+        function createChartTotalesPorBodega(bodegas, totalGlobal) {
+            console.log("Datos para el gráfico de Totales por Bodega:", bodegas);
+    console.log("Total Global:", totalGlobal);
+            const ctx = document.getElementById('totalesPorBodega').getContext('2d');
+            const dataValues = Object.values(bodegas);
+            const percentages = dataValues.map(value => ((value / totalGlobal) * 100).toFixed(2));
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(bodegas),
+                    datasets: [{
+                        label: '', // Dejamos la etiqueta vacía para no mostrar texto en la leyenda
+                        data: dataValues,
+                        backgroundColor: [
+                            'rgba(75, 192, 192, 0.2)',
+                            'rgba(255, 159, 64, 0.2)'
+                        ],
+                        borderColor: [
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(255, 159, 64, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString(); // Separadores de miles
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false // Oculta la leyenda completamente
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percentage = percentages[context.dataIndex];
+                                    return `${value.toLocaleString()} (${percentage}%)`;
+                                }
+                            }
+                        },
+                        datalabels: {
+                            anchor: 'center', // Texto centrado dentro de las barras
+                            align: 'center',
+                            formatter: function(value, context) {
+                                const percentage = percentages[context.dataIndex];
+                                return `${value.toLocaleString()}\n(${percentage}%)`;
+                            },
+                            color: 'black',
+                            font: {
+                                weight: 'bold',
+                                size: 18 // Tamaño del texto ajustado
+                            }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+        }
+
+    function createPieChartFamilia(rows) {
+    const familias = {};
+    let totalGlobal = 0;
+
+    rows.forEach(row => {
+        const familia = row[9]; // Columna J: Familia
+        const total = parseFloat(row[11]) || 0; // Columna L: Total
+        totalGlobal += total;
+
+        if (!familias[familia]) familias[familia] = 0;
+        familias[familia] += total;
+    });
+    console.log("Datos para Participación por Familia:", familias);
+    console.log("Total Global:", totalGlobal);
+    const labels = Object.keys(familias);
+    const dataValues = Object.values(familias);
+
+    const backgroundColors = [
+        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#E57373', '#81C784'
+    ];
+
+    const ctx = document.getElementById('chartPlaceholder2').getContext('2d');
+    if (window.familiaChart) {
+        // Actualizar el gráfico existente
+        window.familiaChart.data.labels = labels;
+        window.familiaChart.data.datasets[0].data = dataValues;
+        window.familiaChart.update();
+    } else {
+        // Crear un nuevo gráfico si no existe
+        window.familiaChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: dataValues,
+                    backgroundColor: backgroundColors.slice(0, labels.length),
+                    borderColor: '#ffffff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    },
+                    datalabels: {
+                        formatter: (value, context) => {
+                            const total = dataValues.reduce((acc, val) => acc + val, 0);
+                            const percentage = ((value / total) * 100).toFixed(2);
+                            if (percentage < 5) return ''; // Ocultar etiquetas menores al 5%
+                            return `${percentage}%`;
+                        },
+                        color: '#000',
+                        font: {
+                            weight: 'bold',
+                            size: 14
+                        },
+                        align: 'center',
+                        offset: 10,
+                        clamp: true
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.raw;
+                                const percentage = ((value / totalGlobal) * 100).toFixed(2);
+                                return `${value.toLocaleString()} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
+    }
+
+    // Actualizar la tabla con los datos filtrados
+    updateTableFamilias(familias);
+}
+
+        function updateTableFamilias(familias) {
+            const tableBody = document.querySelector('#familiaTable tbody');
+            tableBody.innerHTML = ''; // Limpiar contenido previo
+
+            Object.entries(familias).forEach(([familia, total]) => {
+                const row = document.createElement('tr');
+
+                const familiaCell = document.createElement('td');
+                familiaCell.textContent = familia;
+                familiaCell.style.padding = '10px';
+                familiaCell.style.border = '1px solid #ddd';
+
+                const totalCell = document.createElement('td');
+                totalCell.textContent = total.toLocaleString();
+                totalCell.style.padding = '10px';
+                totalCell.style.border = '1px solid #ddd';
+
+                row.appendChild(familiaCell);
+                row.appendChild(totalCell);
+
+                tableBody.appendChild(row);
+            });
+        }
+
+        // Cargar los datos al cargar la página
+        window.onload = fetchSheetData;
+
+        function createPieChartVencimiento(rows) {
+    // Cabeceras de la hoja de cálculo
+    const headers = [
+        "BODEGA", "NIVEL", "PASILLO", "RACK", "CODIGO VENTA",
+        "DESCRIPCION", "BULTOS", "UNIDADES", "FECHA VENCIMIENTO",
+        "FAMILIA", "VALOR UN", "TOTAL", "VENCIMIENTO", "DIAS TOT FALTAN",
+        "MESES FALTANTES", "DIAS FALTANTES"
+    ];
+
+    // Objeto para almacenar los montos totales por categoría
+    const vencimientoCategorias = {
+        "Próximos 2 meses": 0,
+        "Próximos 4 meses": 0,
+        "5 meses o más": 0
+    };
+
+    // Objeto para almacenar los detalles (todas las filas) por categoría
+    const vencimientoDetalles = {
+        "Próximos 2 meses": [],
+        "Próximos 4 meses": [],
+        "5 meses o más": []
+    };
+
+    // Procesar cada fila de datos
+    rows.forEach((row) => {
+        const NIVEL = row[1];              // Columna B: Estado
+        const diasTotFaltan = parseInt(row[13], 10); // Columna N: DIAS TOT FALTAN
+        let mesesFaltantes = parseInt(row[14], 10);  // Columna O: MESES FALTANTES
+        const diasFaltantes = parseInt(row[15], 10); // Columna P: DÍAS FALTANTES
+        const total = parseFloat(row[11]) || 0;       // Columna L: TOTAL
+
+        // Excluir filas con datos inválidos o que no deban considerarse
+        if (
+            isNaN(diasFaltantes) ||        // Días faltantes no es un número
+            diasFaltantes < 0 ||          // Días faltantes negativos
+            diasTotFaltan < 1 ||          // Columna N: Días totales faltan no es positivo
+            NIVEL === "PICKEO" ||         // Excluir filas con nivel "PICKEO"
+            isNaN(total)                  // Total no es un número válido
+        ) {
+            return;
+        }
+
+        // Ajustar meses faltantes si hay días faltantes > 1
+        if (diasFaltantes > 1) {
+            mesesFaltantes += 1;
+        }
+
+        // Determinar la categoría según los meses faltantes
+        if (mesesFaltantes <= 2) {
+            vencimientoCategorias["Próximos 2 meses"] += total;
+            vencimientoDetalles["Próximos 2 meses"].push(row);
+        } else if (mesesFaltantes <= 4) {
+            vencimientoCategorias["Próximos 4 meses"] += total;
+            vencimientoDetalles["Próximos 4 meses"].push(row);
+        } else {
+            vencimientoCategorias["5 meses o más"] += total;
+            vencimientoDetalles["5 meses o más"].push(row);
+        }
+    });
+
+    // Imprimir en consola los montos acumulados por categoría
+    console.log("Montos acumulados por categoría:", vencimientoCategorias);
+
+    // Imprimir en consola los detalles de productos por categoría con cabeceras
+    console.log("Detalles de productos por categoría (con cabeceras):");
+    Object.entries(vencimientoDetalles).forEach(([categoria, filas]) => {
+        console.log(`\nCategoría: ${categoria}`);
+        console.log(headers.join(" | ")); // Imprime las cabeceras separadas por "|"
+
+        filas.forEach((fila) => {
+            console.log(fila.join(" | ")); // Imprime cada fila separada por "|"
+        });
+    });
+
+    // Crear el gráfico Pie
+    const labels = Object.keys(vencimientoCategorias);
+    const dataValues = Object.values(vencimientoCategorias);
+
+    const backgroundColors = ["#FF0000", "#FFFF00", "#00FF00"]; // Rojo, Amarillo, Verde
+
+    const canvas = document.getElementById("chartPlaceholder3");
+    const ctx = canvas.getContext("2d");
+
+    // Si el gráfico ya existe, actualizarlo
+    if (window.vencimientoChart) {
+        window.vencimientoChart.data.labels = labels;
+        window.vencimientoChart.data.datasets[0].data = dataValues;
+        window.vencimientoChart.update();
+    } else {
+        // Crear un nuevo gráfico
+        window.vencimientoChart = new Chart(ctx, {
+            type: "pie",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        data: dataValues,
+                        backgroundColor: backgroundColors,
+                        borderColor: "#ffffff",
+                        borderWidth: 2,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: "right",
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const value = context.raw;
+                                return `Monto: ${value.toLocaleString()}`;
+                            },
+                        },
+                    },
+                    datalabels: {
+                        formatter: (value, context) => {
+                            const total = dataValues.reduce((acc, val) => acc + val, 0);
+                            const percentage = ((value / total) * 100).toFixed(2);
+                            if (percentage < 5) return "";
+                            return `${percentage}%`;
+                        },
+                        color: "#000",
+                        font: {
+                            weight: "bold",
+                            size: 12,
+                        },
+                        align: "center",
+                        offset: 10,
+                        clamp: true,
+                    },
+                },
+            },
+            plugins: [ChartDataLabels],
+        });
+    }
+
+    // Actualizar la tabla con los datos calculados
+    updateTableVencimientos(vencimientoCategorias);
+}
+
+
+function updateTableVencimientos(vencimientoCategorias) {
+    const tableBody = document.querySelector('#vencimientosTable tbody');
+    tableBody.innerHTML = ''; // Limpiar el contenido previo de la tabla
+
+    const totalGlobal = Object.values(vencimientoCategorias).reduce((acc, val) => acc + val, 0); // Sumar el total global
+
+    Object.entries(vencimientoCategorias).forEach(([categoria, total]) => {
+        const row = document.createElement('tr');
+
+        const categoriaCell = document.createElement('td');
+        categoriaCell.textContent = categoria;
+
+        const totalCell = document.createElement('td');
+        totalCell.textContent = total.toLocaleString(); // Formatear con separadores de miles
+
+        const porcentajeCell = document.createElement('td');
+        const porcentaje = Math.round((total / totalGlobal) * 100); // Calcular el porcentaje y redondear a entero
+        porcentajeCell.textContent = `${porcentaje}%`;
+
+        row.appendChild(categoriaCell);
+        row.appendChild(totalCell);
+        row.appendChild(porcentajeCell);
+
+        tableBody.appendChild(row);
+    });
+}
+
+
+function filterVencimientosByBodega(bodegaFilter) {
+    // Filtrar las filas por la bodega seleccionada
+    const filteredRows = originalDataRows.filter(row => row[0] === bodegaFilter); // Columna A: Bodega
+
+    // Recalcular y actualizar el gráfico de vencimientos
+    createPieChartVencimiento(filteredRows);
+
+    // Cambiar el título del gráfico para indicar la bodega seleccionada
+    const chartContainer = document.getElementById('chartPlaceholder3-container');
+    chartContainer.querySelector('h2').textContent = `PRODUCTOS POR VENCIMIENTO - ${bodegaFilter}`;
+}
+
+function resetVencimientosFilter() {
+    // Restablecer el gráfico de vencimientos con todos los datos
+    createPieChartVencimiento(originalDataRows);
+
+    // Restablecer el título del gráfico
+    const chartContainer = document.getElementById('chartPlaceholder3-container');
+    chartContainer.querySelector('h2').textContent = 'PRODUCTOS POR VENCIMIENTO';
+}
+function createPieChartVencimiento(rows) {
+    // Cabeceras de la hoja de cálculo
+    const headers = [
+        "BODEGA", "NIVEL", "PASILLO", "RACK", "CODIGO VENTA",
+        "DESCRIPCION", "BULTOS", "UNIDADES", "TOTAL", "VENCIMIENTO",
+        "MESES FALTANTES", "DIAS FALTANTES"
+    ];
+
+    // Objeto para almacenar los montos totales por categoría
+    const vencimientoCategorias = {
+        "Próximos 2 meses": 0,
+        "Próximos 4 meses": 0,
+        "5 meses o más": 0
+    };
+
+    // Objeto para almacenar los detalles (todas las filas) por categoría
+    const vencimientoDetalles = {
+        "Próximos 2 meses": [],
+        "Próximos 4 meses": [],
+        "5 meses o más": []
+    };
+
+    // Procesar cada fila de datos
+    rows.forEach((row) => {
+        const NIVEL = row[1];              // Columna B: Estado
+        const diasTotFaltan = parseInt(row[13], 10); // Columna N: DIAS TOT FALTAN
+        let mesesFaltantes = parseInt(row[14], 10);  // Columna O: MESES FALTANTES
+        const diasFaltantes = parseInt(row[15], 10); // Columna P: DÍAS FALTANTES
+        const total = parseFloat(row[11]) || 0;       // Columna L: TOTAL
+
+        // Excluir filas con datos inválidos o que no deban considerarse
+        if (
+            isNaN(diasFaltantes) ||        // Días faltantes no es un número
+            diasFaltantes < 0 ||          // Días faltantes negativos
+            diasTotFaltan < 1 ||          // Columna N: Días totales faltan no es positivo
+            NIVEL === "PICKEO" ||         // Excluir filas con nivel "PICKEO"
+            isNaN(total)                  // Total no es un número válido
+        ) {
+            return;
+        }
+
+        // Ajustar meses faltantes si hay días faltantes > 1
+        if (diasFaltantes > 1) {
+            mesesFaltantes += 1;
+        }
+
+        // Determinar la categoría según los meses faltantes
+        if (mesesFaltantes <= 2) {
+            vencimientoCategorias["Próximos 2 meses"] += total;
+            vencimientoDetalles["Próximos 2 meses"].push(row);
+        } else if (mesesFaltantes <= 4) {
+            vencimientoCategorias["Próximos 4 meses"] += total;
+            vencimientoDetalles["Próximos 4 meses"].push(row);
+        } else {
+            vencimientoCategorias["5 meses o más"] += total;
+            vencimientoDetalles["5 meses o más"].push(row);
+        }
+    });
+
+    // Crear tabla en un nuevo contenedor con los productos que vencen en los próximos 2 meses
+    createVencimientosTableContainer(vencimientoDetalles["Próximos 2 meses"], headers);
+
+    // Crear el gráfico Pie
+    const labels = Object.keys(vencimientoCategorias);
+    const dataValues = Object.values(vencimientoCategorias);
+
+    const backgroundColors = ["#FF0000", "#FFFF00", "#00FF00"]; // Rojo, Amarillo, Verde
+
+    const canvas = document.getElementById("chartPlaceholder3");
+    const ctx = canvas.getContext("2d");
+
+    // Si el gráfico ya existe, actualizarlo
+    if (window.vencimientoChart) {
+        window.vencimientoChart.data.labels = labels;
+        window.vencimientoChart.data.datasets[0].data = dataValues;
+        window.vencimientoChart.update();
+    } else {
+        // Crear un nuevo gráfico
+        window.vencimientoChart = new Chart(ctx, {
+            type: "pie",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        data: dataValues,
+                        backgroundColor: backgroundColors,
+                        borderColor: "#ffffff",
+                        borderWidth: 2,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: "right",
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const value = context.raw;
+                                return `Monto: ${value.toLocaleString()}`;
+                            },
+                        },
+                    },
+                    datalabels: {
+                        formatter: (value, context) => {
+                            const total = dataValues.reduce((acc, val) => acc + val, 0);
+                            const percentage = ((value / total) * 100).toFixed(2);
+                            if (percentage < 5) return "";
+                            return `${percentage}%`;
+                        },
+                        color: "#000",
+                        font: {
+                            weight: "bold",
+                            size: 12,
+                        },
+                        align: "center",
+                        offset: 10,
+                        clamp: true,
+                    },
+                },
+            },
+            plugins: [ChartDataLabels],
+        });
+    }
+
+    // Actualizar la tabla de participación (%), la dejamos intacta
+    updateTableVencimientos(vencimientoCategorias);
+}
+
+// Función para crear un contenedor y tabla con los productos que vencen en los próximos 2 meses
+function createVencimientosTableContainer(rows, headers) {
+    // Verificar si la tabla ya existe para evitar duplicados
+    let existingContainer = document.getElementById("vencimientosTableContainer");
+    if (existingContainer) {
+        return; // No crear una nueva tabla si ya existe
+    }
+
+    // Crear el contenedor
+    const container = document.createElement("div");
+    container.id = "vencimientosTableContainer";
+    container.style.margin = "20px auto";
+    container.style.width = "90%";
+    container.style.padding = "15px";
+    container.style.backgroundColor = "#f9f9f9";
+    container.style.border = "1px solid #ddd";
+    container.style.borderRadius = "8px";
+    container.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.1)";
+
+    // Crear el título
+    const title = document.createElement("h3");
+    title.textContent = "Productos con vencimiento en los próximos 2 meses";
+    title.style.textAlign = "center";
+    title.style.color = "#333";
+    container.appendChild(title);
+
+    // Crear el botón para imprimir la tabla
+    const printButton = document.createElement("button");
+    printButton.textContent = "Imprimir PDF";
+    printButton.style.marginBottom = "10px";
+    printButton.style.padding = "10px 20px";
+    printButton.style.backgroundColor = "#4CAF50";
+    printButton.style.color = "white";
+    printButton.style.border = "none";
+    printButton.style.borderRadius = "4px";
+    printButton.style.cursor = "pointer";
+    printButton.addEventListener("click", () => generatePDF(rows, headers));
+    container.appendChild(printButton);
+
+    // Ajustar encabezados: Eliminar "UNIDADES"
+    const adjustedHeaders = headers.filter((header, index) => index !== 7); // Quitar el encabezado "UNIDADES"
+
+    // Crear la tabla
+    const table = document.createElement("table");
+    table.style.width = "100%";
+    table.style.borderCollapse = "collapse";
+    table.style.marginTop = "10px";
+
+    // Crear el encabezado de la tabla
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    adjustedHeaders.forEach((header) => {
+        const th = document.createElement("th");
+        th.textContent = header;
+        th.style.border = "1px solid #ddd";
+        th.style.padding = "8px";
+        th.style.backgroundColor = "#4CAF50";
+        th.style.color = "white";
+        th.style.textAlign = "center";
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Ordenar las filas por fecha (de la más cercana a la más lejana)
+    rows.sort((a, b) => {
+        const mesesA = parseInt(a[14], 10) || 0; // Columna O: MESES FALTANTES
+        const mesesB = parseInt(b[14], 10) || 0;
+        const diasA = parseInt(a[15], 10) || 0; // Columna P: DÍAS FALTANTES
+        const diasB = parseInt(b[15], 10) || 0;
+
+        // Ordenar primero por meses, luego por días
+        if (mesesA === mesesB) {
+            return diasA - diasB;
+        }
+        return mesesA - mesesB;
+    });
+
+    // Crear el cuerpo de la tabla
+    const tbody = document.createElement("tbody");
+    let totalSum = 0;
+    rows.forEach((row) => {
+        const tableRow = document.createElement("tr");
+        const selectedColumns = [0, 1, 2, 3, 4, 5, 6, 11, 12, 14, 15]; // Columnas A, B, C, D, E, F, G, L, M, O, P
+        selectedColumns
+            .filter((colIndex) => colIndex !== 7) // Quitar la columna de índice 7 (UNIDADES)
+            .forEach((colIndex) => {
+                const td = document.createElement("td");
+                const value = row[colIndex];
+                td.textContent = colIndex === 11 ? parseFloat(value).toLocaleString("es-ES") : value; // Formatear total (L)
+                td.style.border = "1px solid #ddd";
+                td.style.padding = "8px";
+                td.style.textAlign = "center";
+                tableRow.appendChild(td);
+            });
+        totalSum += parseFloat(row[11]) || 0; // Sumar columna L (TOTAL)
+        tbody.appendChild(tableRow);
+    });
+
+    // Añadir una fila al final con la sumatoria total
+    const totalRow = document.createElement("tr");
+    totalRow.style.fontWeight = "bold";
+    const totalCell = document.createElement("td");
+    totalCell.colSpan = adjustedHeaders.length - 1; // Ajustar longitud de columnas
+    totalCell.textContent = "Total General:";
+    totalCell.style.border = "1px solid #ddd";
+    totalCell.style.padding = "8px";
+    totalCell.style.textAlign = "right";
+    const totalValueCell = document.createElement("td");
+    totalValueCell.textContent = totalSum.toLocaleString("es-ES"); // Separar miles con puntos
+    totalValueCell.style.border = "1px solid #ddd";
+    totalValueCell.style.padding = "8px";
+    totalValueCell.style.textAlign = "center";
+    totalRow.appendChild(totalCell);
+    totalRow.appendChild(totalValueCell);
+    tbody.appendChild(totalRow);
+
+    table.appendChild(tbody);
+    container.appendChild(table);
+
+    // Añadir el contenedor al documento
+    const dashboard = document.querySelector(".dashboard");
+    dashboard.appendChild(container);
+}
+
+// Función para generar el PDF
+function generatePDF(rows, headers) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape" });
+
+    // Ajustar encabezados: Eliminar "UNIDADES"
+    const adjustedHeaders = headers.filter((header, index) => index !== 7); // Quitar el encabezado "UNIDADES"
+
+    // Obtener los datos de las filas para el PDF
+    const tableData = rows.map((row) => {
+        const selectedColumns = [0, 1, 2, 3, 4, 5, 6, 11, 12, 14, 15]; // Columnas A, B, C, D, E, F, G, L, M, O, P
+        return selectedColumns
+            .filter((colIndex) => colIndex !== 7) // Quitar la columna de índice 7 (UNIDADES)
+            .map((colIndex) => (colIndex === 11 ? parseFloat(row[colIndex]).toLocaleString("es-ES") : row[colIndex]));
+    });
+
+    // Añadir tabla al PDF usando autoTable
+    doc.autoTable({
+        head: [adjustedHeaders],
+        body: tableData,
+        startY: 20,
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [76, 175, 80], textColor: [255, 255, 255] }, // Verde en encabezado
+    });
+
+    // Guardar el archivo y abrir el cuadro de impresión
+    doc.save("tabla_vencimientos.pdf");
+    window.open(doc.output("bloburl"), "_blank");
+}
+
+    </script>
+</body>
+</html>
