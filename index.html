@@ -812,6 +812,8 @@ function createVencimientosTableContainer(rows, headers) {
     // Crear el cuerpo de la tabla
     const tbody = document.createElement("tbody");
     let totalSum = 0;
+    let totalInferior30Dias = 0;
+
     rows.forEach((row) => {
         const tableRow = document.createElement("tr");
         const selectedColumns = [0, 1, 2, 3, 4, 5, 6, 11, 12, 14, 15]; // Columnas A, B, C, D, E, F, G, L, M, O, P
@@ -827,6 +829,12 @@ function createVencimientosTableContainer(rows, headers) {
                 tableRow.appendChild(td);
             });
         totalSum += parseFloat(row[11]) || 0; // Sumar columna L (TOTAL)
+
+        // Sumar montos donde los meses faltantes = 0 y días faltantes < 30
+        if (parseInt(row[14], 10) === 0 && parseInt(row[15], 10) < 30) {
+            totalInferior30Dias += parseFloat(row[11]) || 0;
+        }
+
         tbody.appendChild(tableRow);
     });
 
@@ -848,6 +856,25 @@ function createVencimientosTableContainer(rows, headers) {
     totalRow.appendChild(totalValueCell);
     tbody.appendChild(totalRow);
 
+    // Añadir una fila con el Total Inferior a 30 Días
+    const total30DiasRow = document.createElement("tr");
+    total30DiasRow.style.fontWeight = "bold";
+    total30DiasRow.style.color = "red";
+    const total30DiasCell = document.createElement("td");
+    total30DiasCell.colSpan = adjustedHeaders.length - 1;
+    total30DiasCell.textContent = "Total Inferior a 30 Días:";
+    total30DiasCell.style.border = "1px solid #ddd";
+    total30DiasCell.style.padding = "8px";
+    total30DiasCell.style.textAlign = "right";
+    const total30DiasValueCell = document.createElement("td");
+    total30DiasValueCell.textContent = totalInferior30Dias.toLocaleString("es-ES");
+    total30DiasValueCell.style.border = "1px solid #ddd";
+    total30DiasValueCell.style.padding = "8px";
+    total30DiasValueCell.style.textAlign = "center";
+    total30DiasRow.appendChild(total30DiasCell);
+    total30DiasRow.appendChild(total30DiasValueCell);
+    tbody.appendChild(total30DiasRow);
+
     table.appendChild(tbody);
     container.appendChild(table);
 
@@ -855,6 +882,7 @@ function createVencimientosTableContainer(rows, headers) {
     const dashboard = document.querySelector(".dashboard");
     dashboard.appendChild(container);
 }
+
 
 // Función para generar el PDF
 function generatePDF(rows, headers) {
